@@ -1,5 +1,6 @@
 import numpy as np 
 import tensorflow as tf
+import tensorflow_addons as tfa
 import time
 # from swda_data import load_file
 import os
@@ -131,7 +132,7 @@ class DAModel():
             # Select the last valid time step output as the utterance embedding, 
             # this method is more concise than TensorArray with while_loop
             output = select(output, self.utterance_lengths) # [batch_size, dim]
-            output = tf.reshape(output, s[0], s[1], 2 * hidden_size_lstm_1)
+            output = tf.reshape(output, (s[0], s[1], 2 * hidden_size_lstm_1))
             output = tf.nn.dropout(output, 0.8)
 
 
@@ -164,12 +165,12 @@ class DAModel():
         
         with tf.variable_scope("proj1"):
             output = tf.reshape(outputs, [-1, 2 * hidden_size_lstm_2])
-            W = tf.get_variable("W", dtype = tf.float32, shape = [2 * hidden_size_lstm_2, proj1], initializer= tf.contrib.layers.xavier_initializer())
+            W = tf.get_variable("W", dtype = tf.float32, shape = [2 * hidden_size_lstm_2, proj1], initializer=tf.keras.initializers.glorot_uniform())
             b = tf.get_variable("b", dtype = tf.float32, shape = [proj1], initializer=tf.zeros_initializer())
             output = tf.nn.relu(tf.matmul(output, W) + b)
 
         with tf.variable_scope("proj2"):
-            W = tf.get_variable("W", dtype = tf.float32, shape = [proj1, proj2], initializer= tf.contrib.layers.xavier_initializer())
+            W = tf.get_variable("W", dtype = tf.float32, shape = [proj1, proj2], initializer= tf.keras.initializers.glorot_uniform())
             b = tf.get_variable("b", dtype = tf.float32, shape = [proj2], initializer=tf.zeros_initializer())
             output = tf.nn.relu(tf.matmul(output, W) + b)
 
@@ -183,8 +184,11 @@ class DAModel():
             self.logits = tf.reshape(pred, [-1, nstep, tags])
         
         with tf.variable_scope("loss"):
-            log_likelihood, self.trans_params = tf.contrib.crf.crf_log_likelihood(
-                        self.logits, self.labels, self.dialogue_lengths)
+            transition_params = tf.get_variable("transitions", dtype=tf.float32, shape=[tags, tags])
+            sentence_scores = tfa.text.crf_sequence_score(self.logits, self.labels, self.dialogue_lengths, transition_params)
+            log_norm = tfa.text.crf_log_norm(self.logits, self.dialogue_lengths, transition_params)
+            log_likelihood = sequence_scores - log_norm
+            self.trans_params = transition_params
             self.loss = tf.reduce_mean(-log_likelihood) + tf.nn.l2_loss(W) + tf.nn.l2_loss(b)
             #tf.summary.scalar("loss", self.loss)
         
@@ -236,7 +240,7 @@ def main():
     train_data = data[:6]
     train_labels = labels[:6]
     dev_data = data[6:]
-    dev_labels = data[6:]
+    dev_labels = labels[6:]
     config = tf.ConfigProto()
     config.gpu_options.per_process_gpu_memory_fraction = 0.4
     
@@ -274,7 +278,7 @@ def main():
                 if counter % 1000 == 0:
                     loss_dev = []
                     acc_dev = []
-                    for dialogues, labels in minibatches(dev_data, dev_labels, batchSize):
+                    for dev_dialogues, labels in minibatches(dev_data, dev_labels, batchSize):
                         _, dialogue_lengthss = pad_sequences(dev_dialogues, 0)
                         word_idss, utterance_lengthss = pad_sequences(dev_dialogues, 0, nlevels = 2)
                         true_labs = dev_labels
