@@ -1,11 +1,7 @@
-import numpy as np 
+import numpy as np
+import os
 import tensorflow.compat.v1 as tf
 import tensorflow_addons as tfa
-import time
-# from swda_data import load_file
-import os
-
-os.environ["CUDA_VISIBLE_DEVICES"] = "4,5,6,7"
 
 # helper methods
 def _pad_sequences(sequences, pad_tok, max_length):
@@ -25,6 +21,7 @@ def _pad_sequences(sequences, pad_tok, max_length):
         sequence_length += [min(len(seq), max_length)]
 
     return sequence_padded, sequence_length
+
 
 def pad_sequences(sequences, pad_tok, nlevels=1):
     """
@@ -55,6 +52,7 @@ def pad_sequences(sequences, pad_tok, nlevels=1):
 
     return sequence_padded, sequence_length
 
+
 def minibatches(data, labels, batch_size):
     data_size = len(data)
     start_index = 0
@@ -65,6 +63,7 @@ def minibatches(data, labels, batch_size):
         end_index = min((batch_num + 1) * batch_size, data_size)
         yield data[start_index: end_index], labels[start_index: end_index]
 
+        
 def select(parameters, length):
     """Select the last valid time step output as the sentence embedding
     :params parameters: [batch, seq_len, hidden_dims]
@@ -76,8 +75,19 @@ def select(parameters, length):
     idx = tf.stack([idx, length - 1], axis = 1)
     return tf.gather_nd(parameters, idx)
 
+
+# Toy data from original source
+toy_data = [[[1,2,3,4],[1,2,3],[2,3,5]],[[1,0], [4]],[[1,2,8,4],[1,1,3],[2,3,9,1,3,1,9]], [[1,2,3,4,5,7,8,9],[9,1,2,4],[8,9,0,1,2]],[[1,2,4,3,2,3],[9,8,7,5,5,5,5,5,5,5,5]],[[1,2,3,4,5,6,9],[9,1,0,0,2,4,6,5,4]],[[1,2,3,4,5,6,7,8,9],[9,1,2,4],[8,9,0,1,2]],[[1]] , [[1,2,11,2,3,2,1,1,3,4,4], [6,5,3,2,1,1,4,5,6,7], [9,8,1], [1,6,4,3,5,7,8], [0,9,2,4,6,2,4,6], [5,2,2,5,6,7,3,7,2,2,1], [0,0,0,1,2,7,5,3,7,5,3,6], [1,3,6,6,3,3,3,5,6,7,2,4,2,1], [1,2,4,5,2,3,1,5,1,1,2], [9,0,1,0,0,1,3,3,5,3,2], [0,9,2,3,0,2,1,5,5,6], [9,0,0,1,4,2,4,10,13,11,12], [0,0,1,2,3,0,1,1,0,1,2], [0,0,1,3,1,12,13,3,12,3], [0,9,1,2,3,4,1,3,2]]]
+toy_labels = [[1,2,1],[0, 3],[1,2,1],[1,0,2], [2,1], [1,1], [2,1,2], [4], [0,1,2,0,2,4,2,1,0,1,0,2,1,2,0]]
+train_data = toy_data[:6]
+train_labels = toy_labels[:6]
+dev_data = toy_data[6:]
+dev_labels = toy_labels[6:]
+
+
+# Global variables
 hidden_size_lstm_1 = 200
-hidden_size_lstm_2 = 200
+hidden_size_lstm_2 = 300
 tags = 39
 word_dim = 300
 proj1 = 200
@@ -87,6 +97,7 @@ batchSize = 2
 log_dir = "train"
 model_dir = "DAModel"
 model_name = "ckpt"
+
 
 # Dialogue Act Recognition Model
 # Architecture: dataset --> embedding --> utterance-level bi-LSTM --> conversation-level bi-LSTM --> CRF --> one label per utterance
@@ -193,18 +204,12 @@ class DAModel():
             grads, vs = zip(*optimizer.compute_gradients(self.loss))
             grads, gnorm = tf.clip_by_global_norm(grads, self.clip)
             self.train_op = optimizer.apply_gradients(zip(grads, vs))
-    
+
+
 def main():
     tf.reset_default_graph()
     config = tf.ConfigProto()
     config.gpu_options.per_process_gpu_memory_fraction = 0.4
-
-    data = [[[1,2,3,4],[1,2,3],[2,3,5]],[[1,0], [4]],[[1,2,8,4],[1,1,3],[2,3,9,1,3,1,9]], [[1,2,3,4,5,7,8,9],[9,1,2,4],[8,9,0,1,2]],[[1,2,4,3,2,3],[9,8,7,5,5,5,5,5,5,5,5]],[[1,2,3,4,5,6,9],[9,1,0,0,2,4,6,5,4]],[[1,2,3,4,5,6,7,8,9],[9,1,2,4],[8,9,0,1,2]],[[1]] , [[1,2,11,2,3,2,1,1,3,4,4], [6,5,3,2,1,1,4,5,6,7], [9,8,1], [1,6,4,3,5,7,8], [0,9,2,4,6,2,4,6], [5,2,2,5,6,7,3,7,2,2,1], [0,0,0,1,2,7,5,3,7,5,3,6], [1,3,6,6,3,3,3,5,6,7,2,4,2,1], [1,2,4,5,2,3,1,5,1,1,2], [9,0,1,0,0,1,3,3,5,3,2], [0,9,2,3,0,2,1,5,5,6], [9,0,0,1,4,2,4,10,13,11,12], [0,0,1,2,3,0,1,1,0,1,2], [0,0,1,3,1,12,13,3,12,3], [0,9,1,2,3,4,1,3,2]]]
-    labels = [[1,2,1],[0, 3],[1,2,1],[1,0,2], [2,1], [1,1], [2,1,2], [4], [0,1,2,0,2,4,2,1,0,1,0,2,1,2,0]]
-    train_data = data[:6]
-    train_labels = labels[:6]
-    dev_data = data[6:]
-    dev_labels = labels[6:]
     
     with tf.Session(config=config) as sess:
         model = DAModel()
@@ -274,3 +279,23 @@ def main():
                     dev_loss_summ.value.add(tag='dev_loss', simple_value=valid_loss)
                     writer.add_summary(dev_loss_summ, counter)
                     print("counter = {}, dev_loss = {}, dev_accuacy = {}".format(counter, valid_loss, valid_accuracy))
+
+        test_losses = []
+        test_accs = []
+        for test_batch_dialogues, test_batch_labels in minibatches(test_data, test_labels, batchSize):
+            _, test_batch_dialogue_lengths = pad_sequences(test_batch_dialogues, 0)
+            test_batch_word_ids, test_batch_utterance_lengths = pad_sequences(test_batch_dialogues, 0, nlevels=2)
+            true_labs = test_batch_labels
+            test_batch_true_labels, _ = pad_sequences(true_labs, 0)
+            test_batch_loss, test_batch_acc = sess.run(
+                [model.loss, model.accuracy],
+                feed_dict={
+                    model.word_ids: test_batch_word_ids,
+                    model.utterance_lengths: test_batch_utterance_lengths,
+                    model.dialogue_lengths: test_batch_dialogue_lengths,
+                    model.labels: test_batch_true_labels,
+                    model.clip: clip
+                }
+            )
+            test_losses.append(test_batch_loss)
+            test_accs.append(test_batch_acc)
