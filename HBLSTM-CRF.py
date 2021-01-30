@@ -299,3 +299,7 @@ def main():
             )
             test_losses.append(test_batch_loss)
             test_accs.append(test_batch_acc)
+
+
+if __name__ == "__main__":
+    main()
